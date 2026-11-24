@@ -1,0 +1,232 @@
+{
+  "updatedAt": "2026-10-20T11:45:05.540Z",
+  "createdAt": "2026-10-20T11:44:58.780Z",
+  "id": "Nz2f8pJqptTX0nOn",
+  "name": "C - Registrar cobro (webhook)",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "registrar-cobro",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        160
+      ],
+      "id": "61e60fc4-828e-4ba4-8c26-f70b6e78fb43",
+      "name": "Webhook",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Webhook Perisset"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bca8a49d-002d-4400-96a9-1c3fb1bdf570",
+              "name": "id_liquidacion",
+              "value": "={{ $json.body.id_liquidacion }}",
+              "type": "number"
+            },
+            {
+              "id": "bcab6416-3154-4573-af1c-680a97cb2c39",
+              "name": "fecha_pago",
+              "value": "={{ $json.body.fecha_pago }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -672,
+        160
+      ],
+      "id": "992f2a03-0409-4ecf-950c-ceed5c71c716",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH info_pago AS (\n    SELECT \n        pi.id_pago_inquilino,\n        pi.id_liquidacion,\n        pi.monto_base,\n        lm.mes_año,\n        -- Forzamos el mes en español nativo por SQL para evitar problemas del contenedor Docker\n        CASE EXTRACT(MONTH FROM lm.mes_año)\n            WHEN 1 THEN 'enero' WHEN 2 THEN 'febrero' WHEN 3 THEN 'marzo'\n            WHEN 4 THEN 'abril' WHEN 5 THEN 'mayo' WHEN 6 THEN 'junio'\n            WHEN 7 THEN 'julio' WHEN 8 THEN 'agosto' WHEN 9 THEN 'septiembre'\n            WHEN 10 THEN 'octubre' WHEN 11 THEN 'noviembre' WHEN 12 THEN 'diciembre'\n        END || ' ' || EXTRACT(YEAR FROM lm.mes_año) AS periodo_abonado,\n        (\n            SELECT STRING_AGG(d.nombre, ' y ' ORDER BY d.apellido, d.nombre)\n            FROM contratos_inquilinos ci\n            JOIN datos_inquilinos d ON ci.id_inquilino = d.id_inquilino\n            WHERE ci.id_contrato = lm.id_contrato\n        ) AS nombres_inquilinos,\n        (\n            SELECT STRING_AGG(d.celular, ', ' ORDER BY d.apellido, d.nombre)\n            FROM contratos_inquilinos ci\n            JOIN datos_inquilinos d ON ci.id_inquilino = d.id_inquilino\n            WHERE ci.id_contrato = lm.id_contrato\n        ) AS celular\n    FROM pagos_inquilinos pi\n    JOIN liquidaciones_mensuales lm ON pi.id_liquidacion = lm.id_liquidacion\n    WHERE pi.id_liquidacion = {{ $json.id_liquidacion }}\n),\ncalculo_dias AS (\n    SELECT \n        *,\n        GREATEST(0, ('{{ $json.fecha_pago }}'::DATE - mes_año) + 1) AS dias_transcurridos\n    FROM info_pago\n)\nSELECT \n    c.id_pago_inquilino,\n    c.id_liquidacion,\n    ROUND(c.monto_base, 2) AS monto_base,\n    c.dias_transcurridos,\n    c.periodo_abonado,\n    c.nombres_inquilinos,\n    COALESCE(c.celular, '') AS celular,\n    rm.id_regla as id_regla_mora,\n    ROUND(rm.porcentaje_mora, 2) AS porcentaje_mora,\n    ROUND((c.monto_base * (rm.porcentaje_mora / 100.0)), 2) AS monto_mora,\n    ROUND((c.monto_base + (c.monto_base * (rm.porcentaje_mora / 100.0))), 2) AS monto_total_pagado\nFROM calculo_dias c\nJOIN reglas_mora rm ON LEAST(c.dias_transcurridos, 999) BETWEEN rm.dias_desde AND rm.dias_hasta\nWHERE rm.activo = true;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -448,
+        160
+      ],
+      "id": "f59bebf6-8c3c-47df-b060-33ccab16df60",
+      "name": "Calcular Mora",
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE pagos_inquilinos\nSET \n    id_regla_mora = {{ $json.id_regla_mora }},\n    porcentaje_mora = {{ $json.porcentaje_mora }},\n    monto_mora = {{ $json.monto_mora }},\n    monto_total_pagado = {{ $json.monto_total_pagado }},\n    id_estado_pago = 2, -- Pasa a estado \"pagado\"\n    fecha_pago = '{{ $('Edit Fields').item.json.fecha_pago }}'::DATE,\n    comprobante_enviado = true,\n    fecha_comprobante = NOW(),\n    updated_at = NOW()\nWHERE id_pago_inquilino = {{ $json.id_pago_inquilino }};\n\nUPDATE liquidaciones_mensuales\nSET \n    id_estado_liquidacion = 3, -- Pasa a estado \"pagada\"\n    updated_at = NOW()\nWHERE id_liquidacion = (\n    SELECT id_liquidacion \n    FROM pagos_inquilinos \n    WHERE id_pago_inquilino = {{ $json.id_pago_inquilino }}\n);\n\nINSERT INTO comunicaciones_externas (\n    id_liquidacion,\n    tipo_destinatario,\n    celular_destino,\n    tipo_mensaje,\n    estado_envio,\n    fecha_envio\n) VALUES (\n    {{ $json.id_liquidacion }},\n    'INQUILINO',\n    '{{ String($json.celular || '').replace(/'/g, '') }}',\n    'COMPROBANTE_COBRO',\n    'ENVIADO',\n    NOW()\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -224,
+        160
+      ],
+      "id": "9c1c3e9e-e17f-4037-8337-e562b46eccc9",
+      "name": "Actualizar pagos_inquilinos",
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "{{ $env.TELEGRAM_ADMIN_CHAT_ID }}",
+        "text": "=Hola {{ $('Calcular Mora').item.json.nombres_inquilinos }}, te avisamos que tu pago de {{ $('Calcular Mora').item.json.periodo_abonado }} ya fue confirmado.\n\n*Detalle del cobro:*\nAlquiler y servicios: ${{ $('Calcular Mora').item.json.monto_base }}\nMora aplicada ({{ $('Calcular Mora').item.json.porcentaje_mora }}%): ${{ $('Calcular Mora').item.json.monto_mora }}\n*Total abonado:* ${{ $('Calcular Mora').item.json.monto_total_pagado }}\n\nSi deseas el comprobante pasa por la inmobiliaria para retirarlo fisicamente.\n\nℹ️ _Este es un mensaje automático (no respondas a este número). Comunicate con Laura o Martín para cualquier duda._",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        32,
+        160
+      ],
+      "id": "c059026d-700c-4644-91d9-ab87ceb8a443",
+      "name": "Enviar comprobante",
+      "credentials": {
+        "telegramApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"ok\": true\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "a87279c1-021c-4909-86b8-67bb1f8ee22c",
+      "name": "Responder OK"
+    }
+  ],
+  "connections": {
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Calcular Mora",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calcular Mora": {
+      "main": [
+        [
+          {
+            "node": "Actualizar pagos_inquilinos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Actualizar pagos_inquilinos": {
+      "main": [
+        [
+          {
+            "node": "Responder OK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Enviar comprobante",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "38122ae2-2610-491d-aa1e-31e0e9faa2e0",
+  "activeVersionId": "38122ae2-2610-491d-aa1e-31e0e9faa2e0",
+  "versionCounter": 2,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-10-20T11:44:58.782Z",
+      "createdAt": "2026-10-20T11:44:58.782Z",
+      "role": "workflow:owner",
+      "workflowId": "Nz2f8pJqptTX0nOn",
+      "projectId": "9OihbC9Fe5j0TvPE",
+      "project": {
+        "updatedAt": "2026-10-06T11:29:17.671Z",
+        "createdAt": "2026-05-26T20:48:51.952Z",
+        "id": "9OihbC9Fe5j0TvPE",
+        "name": "Juan Perisset <admin@inmobiliaria-demo.com.ar>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "ec165f7c-a78b-49a4-8880-9952d20aa677"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": "Version 38122ae2",
+    "description": ""
+  }
+}

@@ -1,0 +1,331 @@
+{
+  "updatedAt": "2026-10-20T11:40:37.438Z",
+  "createdAt": "2026-10-20T11:40:37.438Z",
+  "id": "cQxuMgNlyQoev7rU",
+  "name": "B - Notificar liquidaciones (webhook)",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "notificar-liquidaciones",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "aa7a7be5-0607-406c-afda-c9d22ba2bba3",
+      "name": "Webhook",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Webhook Perisset"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  l.id_liquidacion,\n  l.id_contrato,\n  l.mes_año,\n  l.alquiler,\n  l.total,\n  COALESCE(l.moneda, c.moneda, 'ARS') AS moneda,\n  c.alquiler_actual,\n  (\n    SELECT STRING_AGG(d.nombre, ' y ' ORDER BY d.apellido, d.nombre)\n    FROM contratos_inquilinos ci\n    JOIN datos_inquilinos d ON ci.id_inquilino = d.id_inquilino\n    WHERE ci.id_contrato = c.id_contrato\n  ) AS nombres_inquilinos,\n  (\n    SELECT STRING_AGG(d.nombre, ' y ' ORDER BY d.apellido, d.nombre)\n    FROM contratos_inquilinos ci\n    JOIN datos_inquilinos d ON ci.id_inquilino = d.id_inquilino\n    WHERE ci.id_contrato = c.id_contrato\n  ) AS nombre,\n  (\n    SELECT STRING_AGG(d.apellido, ' y ' ORDER BY d.apellido, d.nombre)\n    FROM contratos_inquilinos ci\n    JOIN datos_inquilinos d ON ci.id_inquilino = d.id_inquilino\n    WHERE ci.id_contrato = c.id_contrato\n  ) AS apellido,\n  (\n    SELECT STRING_AGG(d.celular, ', ' ORDER BY d.apellido, d.nombre)\n    FROM contratos_inquilinos ci\n    JOIN datos_inquilinos d ON ci.id_inquilino = d.id_inquilino\n    WHERE ci.id_contrato = c.id_contrato\n  ) AS celular,\n  (\n    SELECT STRING_AGG(d.email, ', ' ORDER BY d.apellido, d.nombre)\n    FROM contratos_inquilinos ci\n    JOIN datos_inquilinos d ON ci.id_inquilino = d.id_inquilino\n    WHERE ci.id_contrato = c.id_contrato\n  ) AS email,\n  s.luz,\n  s.gas,\n  s.agua,\n  s.municipal,\n  s.expensas,\n  s.seguro,\n  COALESCE(\n    (SELECT json_agg(json_build_object('descripcion', cl.descripcion, 'monto', cl.monto, 'tipo', cl.tipo) ORDER BY cl.id_concepto)\n     FROM conceptos_liquidacion cl\n     WHERE cl.id_liquidacion = l.id_liquidacion),\n    '[]'\n  ) AS conceptos\nFROM liquidaciones_mensuales l\nJOIN contratos_de_alquileres c ON l.id_contrato = c.id_contrato\nJOIN estados_liquidacion el ON l.id_estado_liquidacion = el.id_estado_liquidacion\nLEFT JOIN LATERAL (\n  SELECT * FROM servicios_mensuales sm\n  WHERE sm.id_liquidacion = l.id_liquidacion\n  ORDER BY sm.id_servicio DESC LIMIT 1\n) s ON true\nWHERE LOWER(el.nombre) = 'confirmada'\nAND ('{{ $json.body?.mes_año ?? \"\" }}' = '' OR l.mes_año = NULLIF('{{ $json.body?.mes_año ?? \"\" }}', '')::DATE)\nAND NOT EXISTS (\n  SELECT 1 FROM pagos_inquilinos pi \n  WHERE pi.id_liquidacion = l.id_liquidacion\n)\nORDER BY l.id_liquidacion;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        224,
+        0
+      ],
+      "id": "5e61dfb7-9302-4ca9-99b7-03109e3c72f5",
+      "name": "Buscar liquidaciones pendientes",
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const liquidacion = $input.item.json;\n\n// Validar que total existe\nif (!liquidacion.total || liquidacion.total === null) {\n  return {\n    error: true,\n    mensaje: `❌ Error: Liquidación ${liquidacion.id_liquidacion} sin total calculado. Revisar en la BD.`\n  };\n}\n\nconst total = parseFloat(liquidacion.total);\nconst alquilerBase = parseFloat(liquidacion.alquiler ?? liquidacion.alquiler_actual);\nconst mora2porciento = parseFloat((total * 0.02).toFixed(2));\nconst mora4porciento = parseFloat((total * 0.04).toFixed(2));\nconst totalCon2 = parseFloat((total + mora2porciento).toFixed(2));\nconst totalCon4 = parseFloat((total + mora4porciento).toFixed(2));\n\n// Mes en texto (sin desfasaje de huso horario UTC-3)\nconst meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];\nconst [anioStr, mesStr] = String(liquidacion.mes_año).slice(0, 10).split('-');\nconst mesTexto = `${meses[parseInt(mesStr, 10) - 1]} de ${anioStr}`;\n\n// Nombres de inquilinos\nconst nombresInquilinos = liquidacion.nombres_inquilinos || liquidacion.nombre;\n\n// Servicios reales\nconst servicios = [\n  { nombre: 'Luz', valor: liquidacion.luz },\n  { nombre: 'Gas', valor: liquidacion.gas },\n  { nombre: 'Agua', valor: liquidacion.agua },\n  { nombre: 'Municipal', valor: liquidacion.municipal },\n  { nombre: 'Expensas', valor: liquidacion.expensas },\n  { nombre: 'Seguro', valor: liquidacion.seguro }\n].filter(s => s.valor !== null && s.valor !== undefined);\n\nlet serviciosTexto = '';\nif (servicios.length > 0) {\n  serviciosTexto = '\\nServicios:\\n' + servicios.map(s =>\n    `  • ${s.nombre}: $${parseFloat(s.valor).toLocaleString('es-AR')}`\n  ).join('\\n');\n}\n\n// Conceptos reales (separando adicionales y descuentos)\nconst conceptos = liquidacion.conceptos || [];\nconst adicionales = conceptos.filter(c => c.tipo !== 'descuento');\nconst descuentos = conceptos.filter(c => c.tipo === 'descuento');\n\nlet conceptosTexto = '';\nif (adicionales.length > 0) {\n  conceptosTexto += '\\nAdicionales:\\n' + adicionales.map(c =>\n    `  • ${c.descripcion}: $${parseFloat(c.monto).toLocaleString('es-AR')}`\n  ).join('\\n');\n}\nif (descuentos.length > 0) {\n  conceptosTexto += '\\nDescuentos:\\n' + descuentos.map(c =>\n    `  • ${c.descripcion}: -$${parseFloat(c.monto).toLocaleString('es-AR')}`\n  ).join('\\n');\n}\n\nconst mensaje = `Hola ${nombresInquilinos}, te pasamos tu liquidación de ${mesTexto}.\\n\\n📋 *DESGLOSE:*\\nAlquiler: $${alquilerBase.toLocaleString('es-AR')}\\n${serviciosTexto}${conceptosTexto}\\n\\n*TOTAL BASE: $${total.toLocaleString('es-AR')}*\\n\\n⚠️ *REGLAS DE PAGO:*\\n- Hasta el día 20: $${total.toLocaleString('es-AR')}\\n- Del 21 al 30 (+2%): $${totalCon2.toLocaleString('es-AR')}\\n- Después del 30 (+4%): $${totalCon4.toLocaleString('es-AR')}\\n\\nℹ️ _Este es un mensaje automático (no respondas a este número). Comunicate con Laura o Martín para cualquier duda._`;\n\nreturn {\n  mensaje: mensaje,\n  id_liquidacion: liquidacion.id_liquidacion,\n  celular: liquidacion.celular || '',\n  total: total,\n  nombres_inquilinos: nombresInquilinos\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        0
+      ],
+      "id": "ed485a9f-b649-43ab-a8d0-a16a63d678b0",
+      "name": "Formatear mensajes"
+    },
+    {
+      "parameters": {
+        "chatId": "=7275389722",
+        "text": "={{ $json.mensaje }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        640,
+        0
+      ],
+      "id": "94dda296-85d1-4d09-8322-1490f1ba0b31",
+      "name": "Enviar liquidaciones",
+      "credentials": {
+        "telegramApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO pagos_inquilinos (\n  id_liquidacion,\n  monto_base,\n  id_estado_pago,\n  fecha_detalle_enviado,\n  created_at\n)\nSELECT\n  {{ $('Loop Liquidaciones').item.json.id_liquidacion }},\n  {{ $('Loop Liquidaciones').item.json.total }},\n  1,\n  NOW(),\n  NOW()\nWHERE NOT EXISTS (\n  SELECT 1 FROM pagos_inquilinos WHERE id_liquidacion = {{ $('Loop Liquidaciones').item.json.id_liquidacion }}\n);\n\nINSERT INTO comunicaciones_externas (\n  id_liquidacion,\n  tipo_destinatario,\n  celular_destino,\n  tipo_mensaje,\n  estado_envio,\n  fecha_envio\n) VALUES (\n  {{ $('Loop Liquidaciones').item.json.id_liquidacion }},\n  'INQUILINO',\n  '{{ String($('Loop Liquidaciones').item.json.celular || '').replace(/'/g, '') }}',\n  'DETALLE_LIQUIDACION',\n  'ENVIADO',\n  NOW()\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        848,
+        0
+      ],
+      "id": "83e78a7c-d56e-4a94-8b54-84d50d0686e5",
+      "name": "Registrar envio",
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"ok\": true\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1056,
+        0
+      ],
+      "id": "c66aa9ed-5c14-4c1b-b12d-fc5adb5f510b",
+      "name": "Responder OK"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b1b2c3d4-0002-4000-8000-000000000002",
+              "leftValue": "={{ $json.id_liquidacion }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        230,
+        -96
+      ],
+      "id": "b1b2c3d4-0002-4000-8000-000000000001",
+      "name": "Hay pendientes?"
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        440,
+        -96
+      ],
+      "id": "b1b2c3d4-0002-4000-8000-000000000003",
+      "name": "Loop Liquidaciones"
+    },
+    {
+      "parameters": {
+        "amount": 0.4,
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        860,
+        40
+      ],
+      "id": "b1b2c3d4-0002-4000-8000-000000000004",
+      "name": "Pausa Anti-Spam"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Buscar liquidaciones pendientes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar liquidaciones pendientes": {
+      "main": [
+        [
+          {
+            "node": "Hay pendientes?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hay pendientes?": {
+      "main": [
+        [
+          {
+            "node": "Formatear mensajes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear mensajes": {
+      "main": [
+        [
+          {
+            "node": "Loop Liquidaciones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Liquidaciones": {
+      "main": [
+        [
+          {
+            "node": "Responder OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enviar liquidaciones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar liquidaciones": {
+      "main": [
+        [
+          {
+            "node": "Registrar envio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar envio": {
+      "main": [
+        [
+          {
+            "node": "Pausa Anti-Spam",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pausa Anti-Spam": {
+      "main": [
+        [
+          {
+            "node": "Loop Liquidaciones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "1ee6a649-b707-4530-84ac-87f21ef249c4",
+  "activeVersionId": "1ee6a649-b707-4530-84ac-87f21ef249c4",
+  "versionCounter": 1,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-10-20T11:40:37.439Z",
+      "createdAt": "2026-10-20T11:40:37.439Z",
+      "role": "workflow:owner",
+      "workflowId": "cQxuMgNlyQoev7rU",
+      "projectId": "9OihbC9Fe5j0TvPE",
+      "project": {
+        "updatedAt": "2026-10-06T11:29:17.671Z",
+        "createdAt": "2026-05-26T20:48:51.952Z",
+        "id": "9OihbC9Fe5j0TvPE",
+        "name": "Juan Perisset <admin@inmobiliaria-demo.com.ar>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "ec165f7c-a78b-49a4-8880-9952d20aa677"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": "Version 1ee6a649",
+    "description": ""
+  }
+}

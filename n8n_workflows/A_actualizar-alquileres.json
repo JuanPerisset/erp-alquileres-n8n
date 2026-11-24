@@ -1,0 +1,1212 @@
+{
+  "updatedAt": "2026-10-20T11:39:30.800Z",
+  "createdAt": "2026-10-20T11:35:11.587Z",
+  "id": "QccTn5YPNP9UgFDs",
+  "name": "A - Actualización de alquileres (webhook)",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "actualizar-alquileres",
+        "authentication": "headerAuth",
+        "options": {},
+        "responseMode": "onReceived"
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2496,
+        1344
+      ],
+      "id": "2d519f07-97f1-48ce-902a-e0d152259ca9",
+      "name": "Webhook",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Webhook Perisset"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Loop Contratos').item.json.indice_de_actualizacion }}",
+                    "rightValue": "IPC",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "46d9fae1-d70d-4ee4-9922-7f70aa4d11db"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b2848164-1539-4144-b50a-49d0b3c67342",
+                    "leftValue": "={{ $('Loop Contratos').item.json.indice_de_actualizacion }}",
+                    "rightValue": "Casa Propia",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "4523b02f-079c-4e5a-b90e-8c9a4cfa3683",
+                    "leftValue": "={{ $('Loop Contratos').item.json.indice_de_actualizacion }}",
+                    "rightValue": "ICL",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -1776,
+        560
+      ],
+      "id": "a489da5e-3392-4097-867c-6c82b02582f3",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  c.id_contrato,\n  c.alquiler_actual,\n  c.frecuencia_de_actualizacion,\n  c.proxima_actualizacion,\n  c.indice_de_actualizacion,\n  COALESCE(c.moneda, 'ARS') AS moneda,\n  STRING_AGG(d.nombre || ' ' || d.apellido, ', ' ORDER BY d.apellido, d.nombre) AS inquilinos\nFROM contratos_de_alquileres c\nJOIN contratos_inquilinos ci ON c.id_contrato = ci.id_contrato\nJOIN datos_inquilinos d ON ci.id_inquilino = d.id_inquilino\nJOIN estados_contrato ec ON c.id_estado_contrato = ec.id_estado_contrato\nWHERE c.proxima_actualizacion <= CURRENT_DATE\nAND LOWER(ec.nombre) = 'activo'\nGROUP BY \n  c.id_contrato,\n  c.alquiler_actual,\n  c.frecuencia_de_actualizacion,\n  c.proxima_actualizacion,\n  c.indice_de_actualizacion,\n  c.moneda\nORDER BY c.id_contrato",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -2272,
+        1344
+      ],
+      "id": "1865c11b-f076-4ee4-af03-cf7e82cf4da2",
+      "name": "Revision fechas de actualización",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9d6a2fc1-1907-48fa-b35f-be5a277072c9",
+              "leftValue": "={{ $json.id_contrato }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -2048,
+        1344
+      ],
+      "id": "bf95ca48-4abd-40fd-8cbd-535bc570f900",
+      "name": "Hay que actualizar?"
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "chatId": "{{ $env.TELEGRAM_ADMIN_CHAT_ID }}",
+        "message": "=📋 Contrato #{{ $json.id_contrato }}\n 👤 Inquilinos: {{ $json.inquilinos }}\n💰 Alquiler actual: ${{ $json.alquiler_actual }}\n  📈 Porcentaje aplicado: {{ $json.porcentaje }}%\n✅ Nuevo valor propuesto: ${{ $json.alquiler_nuevo }}\n\n¿Actualizamos?",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double",
+            "approveLabel": "✅ Actualiza",
+            "disapproveLabel": "❌ No actualices"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -656,
+        576
+      ],
+      "id": "d6f6ef06-9536-4926-a0fc-72b0d3d52598",
+      "name": "Mensaje de confirmación",
+      "credentials": {
+        "telegramApi": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "88344c12-9019-4a8a-a9b5-f0118d1311ea",
+              "leftValue": "={{ $json.data.approved }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -432,
+        576
+      ],
+      "id": "7da9ae7c-c9d8-4634-a480-38496c661316",
+      "name": "Actualiza automatico?"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1040,
+        1344
+      ],
+      "id": "4fd59a5d-ee16-438f-a743-0a2ef662f7db",
+      "name": "Fin"
+    },
+    {
+      "parameters": {
+        "url": "https://api.argly.com.ar/v1/icl",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "desde",
+              "value": "={{ $('Calcular Fechas ICL').item.json.desde }}"
+            },
+            {
+              "name": "hasta",
+              "value": "={{ $('Calcular Fechas ICL').item.json.hasta }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1328,
+        864
+      ],
+      "id": "8f44b96e-cec0-424a-ae86-1a7ed3858aa5",
+      "name": "HTTP ICL"
+    },
+    {
+      "parameters": {
+        "url": "https://apis.datos.gob.ar/series/api/series/?ids=148.3_INIVELNAL_DICI_M_26&limit=25&sort=desc&format=json",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1328,
+        416
+      ],
+      "id": "60b784d3-e28c-4a91-9853-3b0552e86cc9",
+      "name": "HTTP IPC"
+    },
+    {
+      "parameters": {
+        "jsCode": "const contrato = $('Loop Contratos').item.json;\nconst meses = Math.max(1, parseInt(contrato.frecuencia_de_actualizacion, 10) || 1);\nconst hoy = new Date();\nconst fechaDesde = new Date(hoy);\nfechaDesde.setMonth(fechaDesde.getMonth() - meses);\n\nconst formatoFecha = (fecha) => fecha.toISOString().split('T')[0];\n\nreturn {\n  desde: formatoFecha(fechaDesde),\n  hasta: formatoFecha(hoy)\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1552,
+        864
+      ],
+      "id": "84b215c4-72b9-44f7-9019-50d01444b2b8",
+      "name": "Calcular Fechas ICL"
+    },
+    {
+      "parameters": {
+        "jsCode": "const contrato = $('Loop Contratos').item.json;\nconst indice = contrato.indice_de_actualizacion;\nconst data = $input.item.json.data;\nconst meses = Math.max(1, parseInt(contrato.frecuencia_de_actualizacion, 10) || 1);\nconst idxAnterior = Math.min(meses, data.length - 1);\nconst indiceActual = Number(data[0][1]);\nconst indiceAnterior = Number(data[idxAnterior][1]);\nconst porcentajeIPC = ((indiceActual - indiceAnterior) / indiceAnterior) * 100;\nlet porcentaje = porcentajeIPC;\nif (indice === 'Casa Propia') {\n  // Usa IPC acumulado del período y aplica el 70% de Casa Propia\n  porcentaje = porcentajeIPC * 0.7;\n}\n\nconst [anio, mes, dia] = String(contrato.proxima_actualizacion).slice(0, 10).split('-').map(Number);\nconst proximaActual = new Date(Date.UTC(anio, (mes - 1) + meses, dia || 1));\nconst proximaActualizacion = proximaActual.toISOString().split('T')[0];\n\nreturn {\n  id_contrato: contrato.id_contrato,\n  alquiler_actual: Number(contrato.alquiler_actual),\n  inquilinos: contrato.inquilinos,\n  porcentaje: parseFloat(porcentaje.toFixed(2)),\n  alquiler_nuevo: parseFloat((Number(contrato.alquiler_actual) * (1 + porcentaje / 100)).toFixed(2)),\n  indice_de_actualizacion: indice,\n  proxima_actualizacion: proximaActualizacion,\n  moneda: contrato.moneda || 'ARS',\n  updated_at: new Date().toISOString()\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1104,
+        416
+      ],
+      "id": "b4b92d03-56cc-4f04-88f1-46a26bd61dff",
+      "name": "Code-Calcular porcentaje IPC"
+    },
+    {
+      "parameters": {
+        "jsCode": "const contrato = $('Loop Contratos').item.json;\nconst meses = Math.max(1, parseInt(contrato.frecuencia_de_actualizacion, 10) || 1);\nconst valores = [...($input.item.json.data || [])].sort((a, b) => String(a.fecha || '').localeCompare(String(b.fecha || '')));\nconst iclActual = Number(valores[valores.length - 1].valor);\nconst iclAnterior = Number(valores[0].valor);\nconst porcentaje = ((iclActual - iclAnterior) / iclAnterior) * 100;\n\nconst [anio, mes, dia] = String(contrato.proxima_actualizacion).slice(0, 10).split('-').map(Number);\nconst proximaActual = new Date(Date.UTC(anio, (mes - 1) + meses, dia || 1));\nconst proximaActualizacion = proximaActual.toISOString().split('T')[0];\n\nreturn {\n  id_contrato: contrato.id_contrato,\n  alquiler_actual: Number(contrato.alquiler_actual),\n  inquilinos: contrato.inquilinos,\n  porcentaje: parseFloat(porcentaje.toFixed(2)),\n  alquiler_nuevo: parseFloat((Number(contrato.alquiler_actual) * (1 + porcentaje / 100)).toFixed(2)),\n  indice_de_actualizacion: 'ICL',\n  proxima_actualizacion: proximaActualizacion,\n  moneda: contrato.moneda || 'ARS',\n  updated_at: new Date().toISOString()\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1104,
+        864
+      ],
+      "id": "e5c2a78e-24f0-4e0e-b87e-383a8665b571",
+      "name": "Code-Calcular porcentaje ICL"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Loop Contratos').item.json.indice_de_actualizacion }}",
+                    "rightValue": "ICL",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "46d9fae1-d70d-4ee4-9922-7f70aa4d11db"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b2848164-1539-4144-b50a-49d0b3c67342",
+                    "leftValue": "={{ $('Loop Contratos').item.json.indice_de_actualizacion }}",
+                    "rightValue": "IPC",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b23ba497-c1a8-4a70-8554-6fbd141e5ccf",
+                    "leftValue": "={{ $('Loop Contratos').item.json.indice_de_actualizacion }}",
+                    "rightValue": "Casa Propia",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -224,
+        208
+      ],
+      "id": "16e9c3de-659b-4bef-a92a-554b3416cb88",
+      "name": "Switch1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO historial_de_actualizaciones (\n  id_contrato,\n  fecha_de_actualizacion,\n  indice_de_actualizacion,\n  porcentaje_aplicado,\n  alquiler_anterior,\n  alquiler_nuevo\n) VALUES (\n  {{$('Code-Calcular porcentaje ICL').last().json.id_contrato}},\n  NOW(),\n  '{{$('Code-Calcular porcentaje ICL').last().json.indice_de_actualizacion}}',\n  {{$('Code-Calcular porcentaje ICL').last().json.porcentaje}},\n  {{$('Code-Calcular porcentaje ICL').last().json.alquiler_actual}},\n  {{$('Code-Calcular porcentaje ICL').last().json.alquiler_nuevo}}\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "id": "5cd66143-21b0-4ce1-9ffe-f20b32d7232f",
+      "name": "ICL Actualización tabla historial_de_actualizaciones",
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO historial_de_actualizaciones (\n  id_contrato,\n  fecha_de_actualizacion,\n  indice_de_actualizacion,\n  porcentaje_aplicado,\n  alquiler_anterior,\n  alquiler_nuevo\n) VALUES (\n  {{$('Code-Calcular porcentaje IPC').last().json.id_contrato}},\n  NOW(),\n  '{{$('Code-Calcular porcentaje IPC').last().json.indice_de_actualizacion}}',\n  {{$('Code-Calcular porcentaje IPC').last().json.porcentaje}},\n  {{$('Code-Calcular porcentaje IPC').last().json.alquiler_actual}},\n  {{$('Code-Calcular porcentaje IPC').last().json.alquiler_nuevo}}\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        224
+      ],
+      "id": "bf901e76-15cb-4668-b71f-d76fa9b7b3ba",
+      "name": "IPC  Actualización tabla historial_de_actualizaciones1",
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE contratos_de_alquileres\nSET \n  alquiler_actual = {{$('Code-Calcular porcentaje IPC').last().json.alquiler_nuevo}},\n  proxima_actualizacion = '{{$('Code-Calcular porcentaje IPC').last().json.proxima_actualizacion}}'::DATE,\n  updated_at = NOW()\nWHERE id_contrato = {{$('Code-Calcular porcentaje IPC').last().json.id_contrato}};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        224,
+        224
+      ],
+      "id": "4d10f25d-fb63-4f81-9888-3f6425bc6f67",
+      "name": "IPC  Actualización tabla contratos_de_alquileres1",
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO comunicaciones (\n  id_contrato,\n  id_actualizacion,\n  fecha_envio,\n  mensaje,\n  aprobado\n) VALUES (\n  {{$('Code-Calcular porcentaje IPC').last().json.id_contrato}},\n  (SELECT id_actualizacion FROM historial_de_actualizaciones \n   WHERE id_contrato = {{$('Code-Calcular porcentaje IPC').last().json.id_contrato}}\n   ORDER BY id_actualizacion DESC LIMIT 1),\n  NOW(),\n  'Actualización de alquiler IPC: ' || {{$('Code-Calcular porcentaje IPC').last().json.porcentaje}} || '%',\n  true\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        448,
+        224
+      ],
+      "id": "30118a7d-7713-4b1b-9f6a-ece611a2c137",
+      "name": "IPC Actualización tabla historial_de_comunicaciones2",
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE contratos_de_alquileres\nSET \n  alquiler_actual = {{$('Code-Calcular porcentaje ICL').last().json.alquiler_nuevo}},\n  proxima_actualizacion = '{{$('Code-Calcular porcentaje ICL').last().json.proxima_actualizacion}}'::DATE,\n  updated_at = NOW()\nWHERE id_contrato = {{$('Code-Calcular porcentaje ICL').last().json.id_contrato}};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        224,
+        0
+      ],
+      "id": "8240bb56-491a-49c2-ba23-2b3271a43587",
+      "name": "ICL  Actualización tabla contratos_de_alquileres",
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO comunicaciones (\n  id_contrato,\n  id_actualizacion,\n  fecha_envio,\n  mensaje,\n  aprobado\n) VALUES (\n  {{$('Code-Calcular porcentaje ICL').last().json.id_contrato}},\n  (SELECT id_actualizacion FROM historial_de_actualizaciones \n   WHERE id_contrato = {{$('Code-Calcular porcentaje ICL').last().json.id_contrato}}\n   ORDER BY id_actualizacion DESC LIMIT 1),\n  NOW(),\n  'Actualización de alquiler ICL: ' || {{$('Code-Calcular porcentaje ICL').last().json.porcentaje}} || '%',\n  true\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        448,
+        0
+      ],
+      "id": "6d0bf227-a3b3-4e22-b119-ac07cc43dc14",
+      "name": "ICL Actualización tabla historial_de_comunicaciones",
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        880,
+        208
+      ],
+      "id": "04c44784-912b-4de5-a8c6-9463b34c2641",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        384,
+        864
+      ],
+      "id": "8ec7a862-b1c4-4107-8b99-2575760e4572",
+      "name": "Merge2"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO comunicaciones (\n  id_contrato,\n  id_actualizacion,\n  fecha_envio,\n  mensaje,\n  aprobado\n) VALUES (\n  {{ $('Code-Calcular porcentaje IPC').last().json.id_contrato }},\n  NULL,\n  NOW(),\n  'Actualización de alquiler IPC rechazada: ' || {{ $('Code-Calcular porcentaje IPC').last().json.porcentaje }} || '%',\n  false\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        688
+      ],
+      "id": "ace0969b-1572-483c-9f20-10a4c029f451",
+      "name": "IPC Actualización tabla historial_de_comunicaciones1",
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO comunicaciones (\n  id_contrato,\n  id_actualizacion,\n  fecha_envio,\n  mensaje,\n  aprobado\n) VALUES (\n  {{ $('Code-Calcular porcentaje ICL').last().json.id_contrato }},\n  NULL,\n  NOW(),\n  'Actualización de alquiler ICL rechazada: ' || {{ $('Code-Calcular porcentaje ICL').last().json.porcentaje }} || '%',\n  false\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        880
+      ],
+      "id": "3f358bd7-103a-4947-8d84-83afc48d1216",
+      "name": "ICL Actualización tabla historial_de_comunicaciones1",
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Loop Contratos').item.json.indice_de_actualizacion }}",
+                    "rightValue": "IPC",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "46d9fae1-d70d-4ee4-9922-7f70aa4d11db"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b2848164-1539-4144-b50a-49d0b3c67342",
+                    "leftValue": "={{ $('Loop Contratos').item.json.indice_de_actualizacion }}",
+                    "rightValue": "ICL",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "a5817194-39da-4ff4-a100-bd19114a393d",
+                    "leftValue": "={{ $('Loop Contratos').item.json.indice_de_actualizacion }}",
+                    "rightValue": "Casa Propia",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -224,
+        864
+      ],
+      "id": "75f86c41-9d3b-4f93-9675-c181d762ca86",
+      "name": "Switch2"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO comunicaciones (\n  id_contrato,\n  id_actualizacion,\n  fecha_envio,\n  mensaje,\n  aprobado\n) VALUES (\n  {{$('Code-Calcular porcentaje IPC').last().json.id_contrato}},\n  NULL,\n  NOW(),\n  'Actualización de alquiler Casa Propia rechazada: ' || {{$('Code-Calcular porcentaje IPC').last().json.porcentaje}} || '%',\n  false\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        1088
+      ],
+      "id": "7b37e9b7-2654-4687-a6e6-5caa3d309786",
+      "name": "Casa Propia Actualización tabla historial_de_comunicaciones2",
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO historial_de_actualizaciones (\n  id_contrato,\n  fecha_de_actualizacion,\n  indice_de_actualizacion,\n  porcentaje_aplicado,\n  alquiler_anterior,\n  alquiler_nuevo\n) VALUES (\n  {{$('Code-Calcular porcentaje IPC').last().json.id_contrato}},\n  NOW(),\n  '{{$('Code-Calcular porcentaje IPC').last().json.indice_de_actualizacion}}',\n  {{$('Code-Calcular porcentaje IPC').last().json.porcentaje}},\n  {{$('Code-Calcular porcentaje IPC').last().json.alquiler_actual}},\n  {{$('Code-Calcular porcentaje IPC').last().json.alquiler_nuevo}}\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        432
+      ],
+      "id": "ffd5c5dc-5514-4384-bdcb-d32c49b515ac",
+      "name": "Casa Propia  Actualización tabla historial_de_actualizaciones",
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE contratos_de_alquileres\nSET \n  alquiler_actual = {{$('Code-Calcular porcentaje IPC').last().json.alquiler_nuevo}},\n  proxima_actualizacion = '{{$('Code-Calcular porcentaje IPC').last().json.proxima_actualizacion}}'::DATE,\n  updated_at = NOW()\nWHERE id_contrato = {{$('Code-Calcular porcentaje IPC').last().json.id_contrato}};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        224,
+        432
+      ],
+      "id": "85e8df56-4a51-481b-81fd-9d7f86b6186e",
+      "name": "Casa Propia  Actualización tabla contratos_de_alquileres",
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO comunicaciones (\n  id_contrato,\n  id_actualizacion,\n  fecha_envio,\n  mensaje,\n  aprobado\n) VALUES (\n  {{$('Code-Calcular porcentaje IPC').last().json.id_contrato}},\n  (SELECT id_actualizacion FROM historial_de_actualizaciones \n   WHERE id_contrato = {{$('Code-Calcular porcentaje IPC').last().json.id_contrato}}\n   ORDER BY id_actualizacion DESC LIMIT 1),\n  NOW(),\n  'Actualización de alquiler Casa Propia: ' || {{$('Code-Calcular porcentaje IPC').last().json.porcentaje}} || '%',\n  true\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        432,
+        432
+      ],
+      "id": "9acac8df-cd05-4801-8bbe-8968c2d6fcde",
+      "name": "Casa Propia Actualización tabla historial_de_comunicaciones",
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        112,
+        -1200
+      ],
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Loop Contratos"
+    }
+  ],
+  "connections": {
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "HTTP IPC",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP IPC",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Calcular Fechas ICL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Revision fechas de actualización": {
+      "main": [
+        [
+          {
+            "node": "Hay que actualizar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hay que actualizar?": {
+      "main": [
+        [
+          {
+            "node": "Loop Contratos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mensaje de confirmación": {
+      "main": [
+        [
+          {
+            "node": "Actualiza automatico?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Actualiza automatico?": {
+      "main": [
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Switch2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP ICL": {
+      "main": [
+        [
+          {
+            "node": "Code-Calcular porcentaje ICL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP IPC": {
+      "main": [
+        [
+          {
+            "node": "Code-Calcular porcentaje IPC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calcular Fechas ICL": {
+      "main": [
+        [
+          {
+            "node": "HTTP ICL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code-Calcular porcentaje IPC": {
+      "main": [
+        [
+          {
+            "node": "Mensaje de confirmación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code-Calcular porcentaje ICL": {
+      "main": [
+        [
+          {
+            "node": "Mensaje de confirmación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch1": {
+      "main": [
+        [
+          {
+            "node": "ICL Actualización tabla historial_de_actualizaciones",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IPC  Actualización tabla historial_de_actualizaciones1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Casa Propia  Actualización tabla historial_de_actualizaciones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ICL Actualización tabla historial_de_actualizaciones": {
+      "main": [
+        [
+          {
+            "node": "ICL  Actualización tabla contratos_de_alquileres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IPC  Actualización tabla historial_de_actualizaciones1": {
+      "main": [
+        [
+          {
+            "node": "IPC  Actualización tabla contratos_de_alquileres1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IPC  Actualización tabla contratos_de_alquileres1": {
+      "main": [
+        [
+          {
+            "node": "IPC Actualización tabla historial_de_comunicaciones2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ICL  Actualización tabla contratos_de_alquileres": {
+      "main": [
+        [
+          {
+            "node": "ICL Actualización tabla historial_de_comunicaciones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ICL Actualización tabla historial_de_comunicaciones": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IPC Actualización tabla historial_de_comunicaciones2": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Loop Contratos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IPC Actualización tabla historial_de_comunicaciones1": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch2": {
+      "main": [
+        [
+          {
+            "node": "IPC Actualización tabla historial_de_comunicaciones1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ICL Actualización tabla historial_de_comunicaciones1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Casa Propia Actualización tabla historial_de_comunicaciones2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ICL Actualización tabla historial_de_comunicaciones1": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge2": {
+      "main": [
+        [
+          {
+            "node": "Loop Contratos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Casa Propia Actualización tabla historial_de_comunicaciones2": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Casa Propia  Actualización tabla historial_de_actualizaciones": {
+      "main": [
+        [
+          {
+            "node": "Casa Propia  Actualización tabla contratos_de_alquileres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Casa Propia  Actualización tabla contratos_de_alquileres": {
+      "main": [
+        [
+          {
+            "node": "Casa Propia Actualización tabla historial_de_comunicaciones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Casa Propia Actualización tabla historial_de_comunicaciones": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Revision fechas de actualización",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Contratos": {
+      "main": [
+        [
+          {
+            "node": "Fin",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "f9675cde-4f9b-4501-89f0-c1277bc084ad",
+  "activeVersionId": "f9675cde-4f9b-4501-89f0-c1277bc084ad",
+  "versionCounter": 2,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-10-20T11:35:11.588Z",
+      "createdAt": "2026-10-20T11:35:11.588Z",
+      "role": "workflow:owner",
+      "workflowId": "QccTn5YPNP9UgFDs",
+      "projectId": "9OihbC9Fe5j0TvPE",
+      "project": {
+        "updatedAt": "2026-10-06T11:29:17.671Z",
+        "createdAt": "2026-05-26T20:48:51.952Z",
+        "id": "9OihbC9Fe5j0TvPE",
+        "name": "Juan Perisset <admin@inmobiliaria-demo.com.ar>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "ec165f7c-a78b-49a4-8880-9952d20aa677"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": "1.0",
+    "description": ""
+  }
+}

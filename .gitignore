@@ -1,0 +1,31 @@
+# Secrets & Environments
+.env
+.env.*
+!.env.example
+
+# Databases, Backups & Legacy Files (NEVER COMMIT)
+*.sql
+*.dump
+*.dbf
+*.DBF
+*.cdx
+*.CDX
+*.fpt
+*.FPT
+*.idx
+*.IDX
+*.db
+*.sqlite*
+pgdata/
+backups/
+RESPALDOS*/
+
+# Dependencies & Build
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+build/
+dist/
+.DS_Store

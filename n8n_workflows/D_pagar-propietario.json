@@ -1,0 +1,274 @@
+{
+  "updatedAt": "2026-10-20T11:45:18.603Z",
+  "createdAt": "2026-10-20T11:45:18.603Z",
+  "id": "S1HJqx9xbhoTW6RM",
+  "name": "D - Pagar propietario (webhook)",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pagar-propietario",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -992,
+        80
+      ],
+      "id": "77711fff-6fb3-4386-9eab-769e5cde6dc2",
+      "name": "Webhook",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Webhook Perisset"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0c780f14-ed5d-4818-939b-8a44ef15c10a",
+              "name": "id_liquidacion",
+              "value": "={{ $json.body.id_liquidacion }}",
+              "type": "number"
+            },
+            {
+              "id": "fbd90197-ba17-43d6-8f86-b91a67cfb683",
+              "name": "fecha_pago",
+              "value": "={{ $json.body.fecha_pago }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -784,
+        80
+      ],
+      "id": "1fec1b94-58e9-4c15-a4cc-ff46c7dd9c07",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH datos_pago AS (\n    SELECT \n        lm.id_liquidacion,\n        ca.id_contrato,\n        COALESCE(lm.alquiler, ca.alquiler_actual) AS alquiler_liquidacion,\n        -- Si el porcentaje es null, forzamos un 0% para no romper la matemática\n        COALESCE(ca.porcentaje_honorarios, 0) AS porcentaje_honorarios_aplicado,\n        -- Cálculo sobre el alquiler de la liquidación: Alquiler - (Alquiler * (Honorarios / 100))\n        (COALESCE(lm.alquiler, ca.alquiler_actual) - ROUND(COALESCE(lm.alquiler, ca.alquiler_actual) * (COALESCE(ca.porcentaje_honorarios, 0) / 100.0), 2)) AS monto_neto,\n        (\n            SELECT STRING_AGG(dp.nombre, ' y ' ORDER BY dp.apellido, dp.nombre)\n            FROM propiedades_propietarios pp\n            JOIN datos_propietarios dp ON pp.id_propietario = dp.id_propietario\n            WHERE pp.id_propiedad = ca.id_propiedad\n        ) AS nombre_propietario\n    FROM liquidaciones_mensuales lm\n    JOIN contratos_de_alquileres ca ON lm.id_contrato = ca.id_contrato\n    WHERE lm.id_liquidacion = {{ $json.id_liquidacion }}\n)\nSELECT \n    id_liquidacion,\n    id_contrato,\n    alquiler_liquidacion AS alquiler_actual,\n    ROUND(porcentaje_honorarios_aplicado, 2) AS porcentaje_honorarios_aplicado,\n    ROUND(monto_neto, 2) AS monto_neto,\n    nombre_propietario\nFROM datos_pago;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -576,
+        80
+      ],
+      "id": "81e31520-18d3-4d8a-b03f-b39a7202058a",
+      "name": "Calcular Neto Propietario",
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH nuevo_pago AS (\n    INSERT INTO pagos_propietarios (\n        id_liquidacion,\n        fecha_pago,\n        monto_neto,\n        id_estado_pago,\n        porcentaje_honorarios_aplicado,\n        created_at\n    ) VALUES (\n        {{ $('Calcular Neto Propietario').item.json.id_liquidacion }},\n        '{{ $('Edit Fields').item.json.fecha_pago }}'::DATE,\n        {{ $('Calcular Neto Propietario').item.json.monto_neto }},\n        2, \n        {{ $('Calcular Neto Propietario').item.json.porcentaje_honorarios_aplicado }},\n        NOW()\n    )\n    ON CONFLICT (id_liquidacion) DO NOTHING\n    RETURNING id_pago_propietario\n)\nSELECT * FROM nuevo_pago;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -400,
+        80
+      ],
+      "id": "85aae3cd-ca6a-4f53-8dae-05473804ec8e",
+      "name": "Registro del pago propietarios",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "REDACTED_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4230caa9-198f-48e8-bf2a-9b30cbce0893",
+              "leftValue": "={{ $json.id_pago_propietario }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -224,
+        80
+      ],
+      "id": "20b4059f-e7f2-4f0f-9b3d-410c8847fc36",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"ok\": true\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "af265c55-77b3-4116-9a83-9865e41c9fb8",
+      "name": "Responder OK"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"error\": \"Esta liquidación ya tenía registrado el pago al propietario.\"\n}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        176
+      ],
+      "id": "3ba163b0-847f-4051-9d26-d2d6ad166419",
+      "name": "Responder ya pagado"
+    }
+  ],
+  "connections": {
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Calcular Neto Propietario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calcular Neto Propietario": {
+      "main": [
+        [
+          {
+            "node": "Registro del pago propietarios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registro del pago propietarios": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Responder OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder ya pagado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "15b9ae98-0f54-46e0-9558-05a205d1829b",
+  "activeVersionId": "15b9ae98-0f54-46e0-9558-05a205d1829b",
+  "versionCounter": 1,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-10-20T11:45:18.605Z",
+      "createdAt": "2026-10-20T11:45:18.605Z",
+      "role": "workflow:owner",
+      "workflowId": "S1HJqx9xbhoTW6RM",
+      "projectId": "9OihbC9Fe5j0TvPE",
+      "project": {
+        "updatedAt": "2026-10-06T11:29:17.671Z",
+        "createdAt": "2026-05-26T20:48:51.952Z",
+        "id": "9OihbC9Fe5j0TvPE",
+        "name": "Juan Perisset <admin@inmobiliaria-demo.com.ar>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "ec165f7c-a78b-49a4-8880-9952d20aa677"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": "Version 15b9ae98",
+    "description": ""
+  }
+}
